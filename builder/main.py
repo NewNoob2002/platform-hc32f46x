@@ -156,6 +156,60 @@ if upload_protocol in debug_tools:
     upload_actions = [
         env.VerboseAction(pyocd_load_cmd, "Uploading $SOURCE")
     ]
+elif upload_protocol == "jlink":
+    # upload using JLink
+    offset_address = board.get("upload.offset_address", 0)
+    if isinstance(offset_address, str):
+        offset_address = int(offset_address, 16) if offset_address.startswith("0x") else int(offset_address)
+
+    # get device name
+    device = board.get("debug.jlink_device", "HC32F460")
+
+    # get JLink tool paths
+    jlink_path = platform.get_package_dir("tool-jlink")
+    
+    if env.GetBuildType() == "debug":
+        # in debug mode, halt at main() entry
+        jlink_script = join(env.Dir(".").get_path(), "upload-jlink.jlink")
+        env.Replace(
+            __jlink_script_content = [
+                "h",
+                "loadbin %s,0x%x" % (target_firm.get_abspath(), offset_address),
+                "r",
+                "g",
+                "q"
+            ]
+        )
+        with open(jlink_script, "w") as fp:
+            fp.write("\n".join(env.get("__jlink_script_content")))
+    else:
+        # in release mode, restart and run immediately
+        jlink_script = join(env.Dir(".").get_path(), "upload-jlink.jlink")
+        env.Replace(
+            __jlink_script_content = [
+                "h",
+                "loadbin %s,0x%x" % (target_firm.get_abspath(), offset_address),
+                "r",
+                "g",
+                "q"
+            ]
+        )
+        with open(jlink_script, "w") as fp:
+            fp.write("\n".join(env.get("__jlink_script_content")))
+
+    # build upload command
+    jlink_cmd = [
+        "\"" + join(jlink_path, "JLink.exe") + "\"",
+        "-device", device,
+        "-speed", "4000",
+        "-if", "swd",
+        "-autoconnect", "1",
+        "-CommanderScript", jlink_script
+    ]
+
+    upload_actions = [
+        env.VerboseAction(" ".join(jlink_cmd), "Uploading $SOURCE")
+    ]
 elif upload_protocol == "custom":
     # custom upload tool
     upload_actions = [env.VerboseAction("$UPLOADCMD", "Uploading $SOURCE")]

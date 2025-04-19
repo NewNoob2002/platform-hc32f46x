@@ -20,6 +20,8 @@ class Hc32f46xPlatform(PlatformBase):
             upload_protocol = variables.get("upload_protocol", self.board_config(variables.get("board")).get("upload.protocol", ""))
             if upload_protocol == "cmsis-dap":
                 self.packages["tool-pyocd"]["type"] = "uploader"
+            elif upload_protocol == "jlink":
+                self.packages["tool-jlink"]["type"] = "uploader"
         
         return super().configure_default_packages(variables, targets)
 
@@ -64,15 +66,37 @@ class Hc32f46xPlatform(PlatformBase):
             server_args.extend(debug.get("pyocd_extra_args", []))
             
             # assign the tool configuration
-            debug["tools"][interface] = {
-                "server": {
-                    "package": "tool-pyocd",
-                    "executable": "$PYTHONEXE",
-                    "arguments": server_args,
-                    "ready_pattern": "GDB server started on port 3333",
-                },
-                "port": ":3333",
-            }
+            if interface == "jlink":
+                # J-Link specific configuration
+                jlink_device = debug.get("jlink_device", "HC32F460")
+                debug["tools"][interface] = {
+                    "server": {
+                        "package": "tool-jlink",
+                        "executable": "JLinkGDBServer",
+                        "arguments": [
+                            "-singlerun",
+                            "-if", "swd",
+                            "-select", "usb",
+                            "-device", jlink_device,
+                            "-port", "3333",
+                            "-speed", "4000",
+                        ],
+                    },
+                    "upload_protocol": "jlink",
+                    "onboard": debug.get("onboard_tools", []) and interface in debug.get("onboard_tools", []),
+                    "port": ":3333",
+                }
+            else:
+                # pyOCD based configuration
+                debug["tools"][interface] = {
+                    "server": {
+                        "package": "tool-pyocd",
+                        "executable": "$PYTHONEXE",
+                        "arguments": server_args,
+                        "ready_pattern": "GDB server started on port 3333",
+                    },
+                    "port": ":3333",
+                }
 
         board.manifest["debug"] = debug
         return board
